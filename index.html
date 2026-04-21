@@ -3,9 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AR Model Viewer - Batch Mode</title>
+  <title>AR Model Viewer - Local Mode</title>
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   
   <style>
     :root {
@@ -54,33 +53,12 @@
     .uploadBox p { margin: 0; color: var(--muted); font-size: 16px; }
     .uploadBox input { display: none; }
     
-    /* Modell-Selektor Style */
     #modelList { display: none; margin-top: 20px; text-align: left; }
     .select-style {
       width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border);
       background: var(--card); color: var(--text); font-size: 14px; outline: none;
       cursor: pointer; margin-top: 8px;
     }
-
-    .status {
-      padding: 12px; margin: 10px 0; border-radius: 6px;
-      display: none; font-weight: 600; text-align: center;
-    }
-    .status.success { display: block; background: #d4edda; color: #155724; }
-    .status.loading { display: block; background: #d1ecf1; color: #0c5460; }
-
-    #shareArea { display: none; margin-top: 15px; }
-    .share-flex { 
-      display: flex; align-items: center; justify-content: center; 
-      gap: 20px; background: rgba(0,0,0,0.02); padding: 15px; border-radius: 10px; border: 1px solid var(--border);
-    }
-    .link-box { flex: 1; text-align: left; }
-    .shareLinkBox {
-      background: #fff; border: 1px solid #ccc; padding: 10px;
-      margin-top: 5px; border-radius: 8px; font-family: monospace;
-      font-size: 12px; color: #004a99; cursor: pointer; word-break: break-all;
-    }
-    #qrcode img { border: 4px solid #fff; border-radius: 4px; }
 
     .viewerBox {
       background: var(--card); border: 1px solid var(--border); border-radius: 14px;
@@ -106,10 +84,10 @@
 
 <body>
   <div class="wrap">
-    <div class="theme-switch" id="themeToggle">🍦 Hintergrund: Offwhite/Weiß</div>
+    <div class="theme-switch" id="themeToggle">🍦 Hintergrund ändern</div>
 
     <h1>AR Model Viewer</h1>
-    <p>Wähle einen Ordner mit .glb Modellen aus</p>
+    <p>Wähle einen lokalen Ordner mit .glb Modellen aus</p>
 
     <div class="card" id="uploadCard">
       <div class="uploadBox" id="uploadBox">
@@ -120,19 +98,6 @@
       <div id="modelList">
         <label style="font-size: 12px; font-weight: bold; color: var(--muted);">Modell auswählen:</label>
         <select id="modelSelector" class="select-style"></select>
-      </div>
-
-      <div id="status" class="status"></div>
-      
-      <div id="shareArea">
-        <div class="share-flex">
-          <div class="link-box">
-            <label style="font-size: 12px; font-weight: bold;">Teilen-Link für aktuelles Modell:</label>
-            <div id="shareLinkDisplay" class="shareLinkBox" onclick="copyLink()"></div>
-            <small>(Klicken zum Kopieren)</small>
-          </div>
-          <div id="qrcode"></div>
-        </div>
       </div>
     </div>
 
@@ -150,26 +115,15 @@
   <script>
     const mv = document.getElementById('mv');
     const viewerBox = document.getElementById('viewerBox');
-    const status = document.getElementById('status');
     const fileInput = document.getElementById('fileInput');
     const uploadBox = document.getElementById('uploadBox');
     const modelListDiv = document.getElementById('modelList');
     const modelSelector = document.getElementById('modelSelector');
-    const shareArea = document.getElementById('shareArea');
-    const shareLinkDisplay = document.getElementById('shareLinkDisplay');
-    const qrcodeDiv = document.getElementById('qrcode');
     const themeToggle = document.getElementById('themeToggle');
 
-    let currentUrl = "";
     let loadedFiles = {}; 
 
     themeToggle.onclick = () => document.body.classList.toggle('offwhite-mode');
-
-    function showStatus(msg, type) {
-      status.textContent = msg;
-      status.className = `status ${type}`;
-      status.style.display = 'block';
-    }
 
     uploadBox.onclick = () => fileInput.click();
 
@@ -186,8 +140,9 @@
       loadedFiles = {};
 
       files.forEach((file, index) => {
+        // Erzeugt eine lokale URL für die Datei im Browser-Speicher
         const url = URL.createObjectURL(file);
-        loadedFiles[index] = { url, file };
+        loadedFiles[index] = { url: url };
         const opt = document.createElement('option');
         opt.value = index;
         opt.textContent = file.name;
@@ -199,60 +154,23 @@
 
     modelSelector.onchange = (e) => loadSelectedModel(e.target.value);
 
-    async function loadSelectedModel(index) {
+    function loadSelectedModel(index) {
       const item = loadedFiles[index];
       if (!item) return;
 
-      // Vorschau direkt anzeigen
       mv.src = item.url;
       viewerBox.classList.add('active');
-      shareArea.style.display = "none";
-      
-      // Cloud Upload starten
-      handleCloudUpload(item.file);
     }
-
-    async function handleCloudUpload(file) {
-      showStatus("🚀 Cloud-Upload läuft...", "loading");
-
-      const fd = new FormData();
-      fd.append('reqtype', 'fileupload');
-      fd.append('time', '24h');
-      fd.append('fileToUpload', file);
-
-      try {
-        const res = await fetch('https://litterbox.catbox.moe/resources/internals/api.php', { method: 'POST', body: fd });
-        const fileUrl = await res.text();
-        if (!fileUrl.startsWith('http')) throw new Error();
-
-        currentUrl = window.location.origin + window.location.pathname + '?model=' + encodeURIComponent(fileUrl);
-        shareLinkDisplay.textContent = currentUrl;
-        qrcodeDiv.innerHTML = "";
-        new QRCode(qrcodeDiv, { text: currentUrl, width: 80, height: 80 });
-        
-        shareArea.style.display = "block";
-        showStatus("✅ Modell bereit & Link erstellt!", "success");
-        mv.src = fileUrl; 
-      } catch(e) {
-        showStatus("❌ Nur lokale Ansicht (Upload fehlgeschlagen)", "loading");
-      }
-    }
-
-    window.copyLink = () => {
-      navigator.clipboard.writeText(currentUrl).then(() => alert("Link kopiert!"));
-    };
 
     document.getElementById('btnReset').onclick = () => { mv.cameraOrbit = '0deg 75deg auto'; };
-    document.getElementById('btnFullscreen').onclick = () => { mv.requestFullscreen(); };
+    document.getElementById('btnFullscreen').onclick = () => { 
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        mv.requestFullscreen();
+      }
+    };
     document.getElementById('btnAR').onclick = () => { mv.activateAR(); };
-
-    // Initial-Check für geteilte Links
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('model')) {
-      mv.src = params.get('model');
-      viewerBox.classList.add('active');
-      showStatus("📦 Geteiltes Modell geladen", "success");
-    }
   </script>
 </body>
 </html>
